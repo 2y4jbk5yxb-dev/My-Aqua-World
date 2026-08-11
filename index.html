@@ -117,7 +117,16 @@ function tank(){return db.tanks.find(x=>x.id===db.activeTankId)||db.tanks[0]}
 function uid(p){return p+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function esc(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 function fmt(s){if(!s)return"—";try{return new Date(s+"T12:00:00").toLocaleDateString()}catch(e){return s}}
-function fileData(inp){return new Promise(res=>{const f=inp.files&&inp.files[0];if(!f)return res("");const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f)})}
+function fileData(inp){
+  return new Promise((res,rej)=>{
+    const f=inp.files&&inp.files[0];
+    if(!f)return res("");
+    const r=new FileReader();
+    r.onerror=()=>rej(r.error||new Error("Could not read selected image."));
+    r.onload=()=>res(r.result);
+    r.readAsDataURL(f);
+  });
+}
 function today(id){const e=document.getElementById(id);if(e&&!e.value)e.value=new Date().toISOString().slice(0,10)}
 function nav(){nav.innerHTML}
 function makeNav(){const n=document.getElementById("nav");n.innerHTML="";tabs.forEach(([id,l],i)=>{const b=document.createElement("button");b.textContent=l;b.dataset.id=id;if(i===0)b.classList.add("on");b.onclick=()=>show(id);n.appendChild(b)})}
@@ -168,16 +177,62 @@ function openTankEditor(){creatingTank=false;fillTank(tank());deleteTankBtn.styl
 function newTank(){creatingTank=true;fillTank({name:"New Tank",size:"",volume:"",unit:"gal",status:"Not Started",waterType:"Freshwater",style:"",purpose:"",setupDate:"",targetTemp:"",waterChangeDay:"",fastingDay:"",tankVibe:"",nextTask:""});deleteTankBtn.style.display="none";tankModal.classList.add("on")}
 function closeTankEditor(){tankModal.classList.remove("on")}
 function fillTank(t){teName.value=t.name||"";teSize.value=t.size||"";teVolume.value=t.volume||"";teUnit.value=t.unit||"gal";teStatus.value=t.status||"";teWater.value=t.waterType||"Freshwater";teStyle.value=t.style||"";tePurpose.value=t.purpose||"";teSetup.value=t.setupDate||"";teTemp.value=t.targetTemp||"";teWCDay.value=t.waterChangeDay||"";teFast.value=t.fastingDay||"";teVibe.value=t.tankVibe||"";teNext.value=t.nextTask||"";tePhoto.value=""}
-async function saveTankEditor(){let t;if(creatingTank){t=clone(STARTER.tanks[1]);t.id=uid("tank");t.name="New Tank";db.tanks.push(t);db.activeTankId=t.id}else t=tank();t.name=teName.value||"Unnamed Tank";t.size=teSize.value;t.volume=teVolume.value;t.unit=teUnit.value;t.status=teStatus.value;t.waterType=teWater.value;t.style=teStyle.value;t.purpose=tePurpose.value;t.setupDate=teSetup.value;t.targetTemp=teTemp.value;t.waterChangeDay=teWCDay.value;t.fastingDay=teFast.value;t.tankVibe=teVibe.value;t.nextTask=teNext.value;const p=await fileData(tePhoto);if(p)t.referencePhoto=p;closeTankEditor();saveDB()}
+async function saveTankEditor(){
+  let t;
+  if(creatingTank){
+    t=clone(STARTER.tanks[1]);
+    t.id=uid("tank");
+    t.name="New Tank";
+    db.tanks.push(t);
+    db.activeTankId=t.id;
+  }else t=tank();
+
+  t.name=teName.value||"Unnamed Tank";
+  t.size=teSize.value;
+  t.volume=teVolume.value;
+  t.unit=teUnit.value;
+  t.status=teStatus.value;
+  t.waterType=teWater.value;
+  t.style=teStyle.value;
+  t.purpose=tePurpose.value;
+  t.setupDate=teSetup.value;
+  t.targetTemp=teTemp.value;
+  t.waterChangeDay=teWCDay.value;
+  t.fastingDay=teFast.value;
+  t.tankVibe=teVibe.value;
+  t.nextTask=teNext.value;
+
+  try{
+    const p=await fileData(tePhoto);
+    if(p)t.referencePhoto=p;
+  }catch(err){
+    alert("The tank details will save, but Safari could not read that photo. Try another image.");
+    console.error(err);
+  }
+
+  closeTankEditor();
+  localStorage.setItem(KEY,JSON.stringify(db));
+  renderAll();
+}
 function deleteTank(){if(db.tanks.length<=1)return;if(!confirm("Delete this tank and ALL its data?"))return;const id=db.activeTankId;db.tanks=db.tanks.filter(x=>x.id!==id);db.activeTankId=db.tanks[0].id;closeTankEditor();saveDB()}
 
 async function changeTankPhotoFromHome(){
   const input=document.getElementById("homeTankPhoto");
-  const photo=await fileData(input);
-  if(!photo)return;
-  tank().referencePhoto=photo;
-  input.value="";
-  saveDB();
+  try{
+    const photo=await fileData(input);
+    if(!photo)return;
+    // Update the image immediately so the user sees it before any storage work.
+    const img=document.getElementById("refImg");
+    img.src=photo;
+    img.style.display="block";
+    tank().referencePhoto=photo;
+    input.value="";
+    localStorage.setItem(KEY,JSON.stringify(db));
+    renderHome();
+  }catch(err){
+    alert("The photo was selected, but Safari could not read it. Please try a different photo or save it to Files first.");
+    console.error(err);
+  }
 }
 function removeTankPhoto(){
   if(!tank().referencePhoto)return;
